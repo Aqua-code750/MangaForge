@@ -50,6 +50,7 @@ from core.layout_engine import (
     Rect,
 )
 from providers.text_anthropic import AnthropicTextProvider
+from providers.text_gemini import GeminiTextProvider
 from providers.text_mock import MockTextProvider
 from providers.image_base import ImageProvider, compute_image_cache_key
 from providers.image_mock import MockImageProvider
@@ -203,17 +204,27 @@ with st.sidebar:
     # --- Provider Settings ---
     st.divider()
     st.subheader("🤖 Text AI Provider")
+    gemini_key_default = os.getenv("GEMINI_API_KEY", os.getenv("IMAGE_API_KEY", ""))
+    anthropic_key_default = os.getenv("ANTHROPIC_API_KEY", "")
+
+    provider_options = ["Anthropic Claude", "Google Gemini", "Mock Provider (Offline)"]
+    if anthropic_key_default:
+        default_idx = 0
+    elif gemini_key_default:
+        default_idx = 1
+    else:
+        default_idx = 2
+
     provider_choice = st.radio(
         "Model Engine",
-        ["Anthropic Claude", "Mock Provider (Offline)"],
-        index=0 if os.getenv("ANTHROPIC_API_KEY") else 1,
+        provider_options,
+        index=default_idx,
     )
 
-    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
     if provider_choice == "Anthropic Claude":
         sidebar_key = st.text_input(
             "Anthropic API Key",
-            value=anthropic_key,
+            value=anthropic_key_default,
             type="password",
             help="Set in .env or enter here for the session",
         )
@@ -227,33 +238,50 @@ with st.sidebar:
         else:
             st.warning("⚠️ No Anthropic key found. Switched to Mock Provider.")
             provider = MockTextProvider()
+    elif provider_choice == "Google Gemini":
+        sidebar_gemini_key = st.text_input(
+            "Gemini API Key",
+            value=gemini_key_default,
+            type="password",
+            help="Set in .env or enter here for the session",
+        )
+        gemini_model_name = st.selectbox(
+            "Gemini Model",
+            ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-pro"],
+            index=0,
+        )
+        if sidebar_gemini_key:
+            provider = GeminiTextProvider(api_key=sidebar_gemini_key, model=gemini_model_name)
+        else:
+            st.warning("⚠️ No Gemini key found. Switched to Mock Provider.")
+            provider = MockTextProvider()
     else:
         st.info("💡 Running offline with Mock Text Provider.")
         provider = MockTextProvider()
 
-    # --- Image Provider Settings (Phase 2) ---
+    # --- Image Provider Settings ---
     st.divider()
     st.subheader("🎨 Image AI Provider")
     img_choice = st.radio(
         "Image Engine",
-        ["Mock Provider (Offline)", "Custom Provider (Stub)"],
-        index=0,
-        help="Use Mock for offline layout/preview, or CustomProvider to connect your real tool."
+        ["Mock Provider (Offline)", "Google Imagen / Custom Provider"],
+        index=0 if not (os.getenv("IMAGE_API_KEY") or os.getenv("GEMINI_API_KEY")) else 1,
+        help="Use Mock for offline layout/preview, or Google Imagen / Custom Provider to generate AI panels."
     )
-    if img_choice == "Custom Provider (Stub)":
+    if img_choice == "Google Imagen / Custom Provider":
         custom_key = st.text_input(
-            "IMAGE_API_KEY",
-            value=os.getenv("IMAGE_API_KEY", ""),
+            "IMAGE_API_KEY / GEMINI_API_KEY",
+            value=os.getenv("IMAGE_API_KEY", os.getenv("GEMINI_API_KEY", "")),
             type="password",
             help="Set in .env or enter here"
         )
         custom_endpoint = st.text_input(
-            "API Endpoint",
+            "API Endpoint (Optional)",
             value=os.getenv("IMAGE_API_ENDPOINT", ""),
             help="Optional API base URL"
         )
         image_provider = CustomImageProvider(api_key=custom_key, endpoint=custom_endpoint)
-        st.caption("ℹ️ Configure `providers/image_custom.py` to connect your model.")
+        st.caption("ℹ️ Powered by `providers/image_custom.py` (Imagen 3 / Google GenAI).")
     else:
         st.info("💡 Mock Image Provider renders instant offline panel placeholders.")
         image_provider = MockImageProvider()

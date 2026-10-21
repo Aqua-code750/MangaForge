@@ -51,11 +51,21 @@ class AnthropicTextProvider(TextProvider):
             self._client = anthropic.Anthropic(api_key=self.api_key)
         return self._client
 
+    def _create_message(self, **kwargs) -> Any:
+        """Call client.messages.create with fallback if temperature or other kwargs are rejected."""
+        try:
+            return self.client.messages.create(**kwargs)
+        except TypeError as te:
+            if "temperature" in str(te):
+                kwargs.pop("temperature", None)
+                return self.client.messages.create(**kwargs)
+            raise
+
     def generate_text(
         self,
         prompt: str,
         system_prompt: Optional[str] = None,
-        temperature: float = 0.7,
+        temperature: Optional[float] = None,
         max_tokens: int = 4000,
     ) -> str:
         messages = [{"role": "user", "content": prompt}]
@@ -63,12 +73,13 @@ class AnthropicTextProvider(TextProvider):
             "model": self.model,
             "messages": messages,
             "max_tokens": max_tokens,
-            "temperature": temperature,
         }
+        if temperature is not None:
+            kwargs["temperature"] = temperature
         if system_prompt:
             kwargs["system"] = system_prompt
 
-        response = self.client.messages.create(**kwargs)
+        response = self._create_message(**kwargs)
         # Anthropic response blocks
         content_parts = []
         for block in response.content:
@@ -81,7 +92,7 @@ class AnthropicTextProvider(TextProvider):
         prompt: str,
         response_model: Type[T],
         system_prompt: Optional[str] = None,
-        temperature: float = 0.7,
+        temperature: Optional[float] = None,
         max_retries: int = 2,
     ) -> T:
         schema = json.dumps(response_model.model_json_schema(), indent=2)
@@ -101,12 +112,13 @@ class AnthropicTextProvider(TextProvider):
                 "model": self.model,
                 "messages": messages,
                 "max_tokens": 4096,
-                "temperature": temperature,
             }
+            if temperature is not None:
+                kwargs["temperature"] = temperature
             if system_prompt:
                 kwargs["system"] = system_prompt
 
-            response = self.client.messages.create(**kwargs)
+            response = self._create_message(**kwargs)
             raw_text = "".join(b.text for b in response.content if hasattr(b, "text"))
             cleaned = clean_json_string(raw_text)
 

@@ -1,15 +1,24 @@
 import pytest
 from core.models import Bible, VolumePlan, ChapterScript, ProjectSettings
 from providers.text_mock import MockTextProvider
-from providers.text_anthropic import clean_json_string
+from providers.text_anthropic import clean_json_string as anthropic_clean_json
+from providers.text_gemini import GeminiTextProvider, clean_json_string as gemini_clean_json
 
 
 def test_clean_json_string():
     raw_markdown = '```json\n{"key": "value"}\n```'
-    assert clean_json_string(raw_markdown) == '{"key": "value"}'
+    assert anthropic_clean_json(raw_markdown) == '{"key": "value"}'
+    assert gemini_clean_json(raw_markdown) == '{"key": "value"}'
 
     raw_text_with_chatter = 'Here is your response:\n{"title": "Manga"}\nHope this helps!'
-    assert clean_json_string(raw_text_with_chatter) == '{"title": "Manga"}'
+    assert anthropic_clean_json(raw_text_with_chatter) == '{"title": "Manga"}'
+    assert gemini_clean_json(raw_text_with_chatter) == '{"title": "Manga"}'
+
+
+def test_gemini_provider_missing_key():
+    provider = GeminiTextProvider(api_key="")
+    with pytest.raises(ValueError, match="GEMINI_API_KEY is missing"):
+        _ = provider.client
 
 
 def test_mock_text_provider_bible():
