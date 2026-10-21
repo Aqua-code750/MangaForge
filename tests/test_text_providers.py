@@ -17,7 +17,7 @@ def test_clean_json_string():
 
 def test_gemini_provider_missing_key():
     provider = GeminiTextProvider(api_key="")
-    with pytest.raises(ValueError, match="GEMINI_API_KEY is missing"):
+    with pytest.raises(ValueError, match="GEMINI_API_KEY.*missing"):
         _ = provider.client
 
 

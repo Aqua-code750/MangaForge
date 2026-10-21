@@ -201,3 +201,22 @@ def test_batch_generate_chapter_panels(sample_setup):
     assert "p1_panel1" in manifest.panels
     assert "p1_panel2" in manifest.panels
 
+
+def test_custom_image_provider_aspect_ratio_and_missing_key():
+    from providers.image_custom import CustomImageProvider, map_dimensions_to_aspect_ratio, create_quota_cooldown_placeholder
+
+    assert map_dimensions_to_aspect_ratio(1920, 1080) == "16:9"
+    assert map_dimensions_to_aspect_ratio(1080, 1080) == "1:1"
+    assert map_dimensions_to_aspect_ratio(1080, 1920) == "9:16"
+
+    # Test missing key raises ValueError
+    provider = CustomImageProvider(api_key="")
+    with pytest.raises(ValueError, match="IMAGE_API_KEY / GEMINI_API_KEY is not configured"):
+        provider.generate("prompt", "neg", 800, 800)
+
+    # Test cooldown placeholder generation creates valid image bytes
+    placeholder_bytes = create_quota_cooldown_placeholder(800, 1200, "sample prompt", "notice")
+    img = Image.open(io.BytesIO(placeholder_bytes))
+    assert img.size == (800, 1200)
+
+

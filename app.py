@@ -247,8 +247,9 @@ with st.sidebar:
         )
         gemini_model_name = st.selectbox(
             "Gemini Model",
-            ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-pro"],
+            ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.5-flash", "gemini-pro-latest", "gemini-2.5-flash"],
             index=0,
+            help="gemini-3.8-flash is the active high-speed multimodal model on Google AI Studio.",
         )
         if sidebar_gemini_key:
             provider = GeminiTextProvider(api_key=sidebar_gemini_key, model=gemini_model_name)
@@ -262,26 +263,34 @@ with st.sidebar:
     # --- Image Provider Settings ---
     st.divider()
     st.subheader("🎨 Image AI Provider")
+    image_key_default = os.getenv("IMAGE_API_KEY") or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or ""
     img_choice = st.radio(
         "Image Engine",
-        ["Mock Provider (Offline)", "Google Imagen / Custom Provider"],
-        index=0 if not (os.getenv("IMAGE_API_KEY") or os.getenv("GEMINI_API_KEY")) else 1,
-        help="Use Mock for offline layout/preview, or Google Imagen / Custom Provider to generate AI panels."
+        ["Mock Provider (Offline)", "Google Generative AI / Custom"],
+        index=0 if not image_key_default else 1,
+        help="Use Mock for instant offline testing, or Google Generative AI for panel generation."
     )
-    if img_choice == "Google Imagen / Custom Provider":
+    if img_choice == "Google Generative AI / Custom":
         custom_key = st.text_input(
-            "IMAGE_API_KEY / GEMINI_API_KEY",
-            value=os.getenv("IMAGE_API_KEY", os.getenv("GEMINI_API_KEY", "")),
+            "Google API Key (IMAGE_API_KEY / GEMINI_API_KEY)",
+            value=image_key_default,
             type="password",
             help="Set in .env or enter here"
         )
-        custom_endpoint = st.text_input(
-            "API Endpoint (Optional)",
-            value=os.getenv("IMAGE_API_ENDPOINT", ""),
-            help="Optional API base URL"
+        img_model_name = st.selectbox(
+            "Image Generation Model",
+            [
+                "nano-banana-pro-preview",
+                "gemini-nano-banana-2.1",
+                "gemini-2.5-flash-image",
+                "gemini-3.1-flash-image",
+                "imagen-3.0-generate-002",
+            ],
+            index=0,
+            help="Google AI Studio image model (e.g. Nano Banana Pro Preview or Gemini Image)"
         )
-        image_provider = CustomImageProvider(api_key=custom_key, endpoint=custom_endpoint)
-        st.caption("ℹ️ Powered by `providers/image_custom.py` (Imagen 3 / Google GenAI).")
+        image_provider = CustomImageProvider(api_key=custom_key, model_name=img_model_name)
+        st.caption("ℹ️ Powered by `providers/image_custom.py` via `google-generativeai`.")
     else:
         st.info("💡 Mock Image Provider renders instant offline panel placeholders.")
         image_provider = MockImageProvider()

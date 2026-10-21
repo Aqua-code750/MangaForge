@@ -2,6 +2,7 @@ from __future__ import annotations
 import os
 import json
 import re
+import logging
 from typing import Type, TypeVar, Optional, List, Dict, Any
 from pydantic import BaseModel, ValidationError
 from dotenv import load_dotenv
@@ -9,6 +10,7 @@ from dotenv import load_dotenv
 from providers.text_base import TextProvider
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -27,7 +29,10 @@ def clean_json_string(raw: str) -> str:
 
 
 class GeminiTextProvider(TextProvider):
-    """Google Gemini text provider via google-genai SDK with schema validation & retry loop."""
+    """
+    Google Gemini text provider powered by google-generativeai (with google.genai fallback).
+    Includes Pydantic JSON schema enforcement and automated error-feedback retry loops.
+    """
 
     def __init__(
         self,
@@ -40,19 +45,31 @@ class GeminiTextProvider(TextProvider):
             self.api_key = (
                 os.getenv("GEMINI_API_KEY")
                 or os.getenv("IMAGE_API_KEY")
+                or os.getenv("GOOGLE_API_KEY")
                 or ""
             )
-        self.model = model or os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-        self._client = None
+        self.model = model or os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+        self._configured = False
+
+    def _ensure_configured(self):
+        if not self.api_key:
+            raise ValueError(
+                "GEMINI_API_KEY / GOOGLE_API_KEY is missing. "
+                "Please configure it in .env or the MangaForge sidebar."
+            )
+        if not self._configured:
+            try:
+                import google.generativeai as genai
+                genai.configure(api_key=self.api_key)
+                self._configured = True
+            except Exception as e:
+                logger.warning(f"google.generativeai configure error: {e}")
 
     @property
     def client(self):
-        if self._client is None:
-            if not self.api_key:
-                raise ValueError("GEMINI_API_KEY is missing. Please set it in .env or the sidebar.")
-            from google import genai
-            self._client = genai.Client(api_key=self.api_key)
-        return self._client
+        self._ensure_configured()
+        from google import genai
+        return genai.Client(api_key=self.api_key)
 
     def generate_text(
         self,
@@ -61,23 +78,51 @@ class GeminiTextProvider(TextProvider):
         temperature: Optional[float] = None,
         max_tokens: int = 4000,
     ) -> str:
-        from google.genai import types
+        self._ensure_configured()
 
-        config_dict: Dict[str, Any] = {
-            "max_output_tokens": max_tokens,
-        }
-        if temperature is not None:
-            config_dict["temperature"] = temperature
-        if system_prompt:
-            config_dict["system_instruction"] = system_prompt
+        # Primary: google-generativeai
+        try:
+            import google.generativeai as genai
 
-        config = types.GenerateContentConfig(**config_dict)
-        response = self.client.models.generate_content(
-            model=self.model,
-            contents=prompt,
-            config=config,
-        )
-        return response.text or ""
+            model_kwargs = {"model_name": self.model}
+            if system_prompt:
+                model_kwargs["system_instruction"] = system_prompt
+
+            model_instance = genai.GenerativeModel(**model_kwargs)
+
+            config_kwargs: Dict[str, Any] = {"max_output_tokens": max_tokens}
+            if temperature is not None:
+                config_kwargs["temperature"] = temperature
+
+            cfg = genai.types.GenerationConfig(**config_kwargs)
+            res = model_instance.generate_content(prompt, generation_config=cfg)
+            if hasattr(res, "text") and res.text:
+                return res.text
+            return ""
+        except Exception as genai_err:
+            logger.info(f"google-generativeai invocation note: {genai_err}. Trying google.genai fallback...")
+
+        # Secondary: google.genai client fallback
+        try:
+            from google import genai
+            from google.genai import types
+
+            client = genai.Client(api_key=self.api_key)
+            config_dict: Dict[str, Any] = {"max_output_tokens": max_tokens}
+            if temperature is not None:
+                config_dict["temperature"] = temperature
+            if system_prompt:
+                config_dict["system_instruction"] = system_prompt
+
+            config = types.GenerateContentConfig(**config_dict)
+            response = client.models.generate_content(
+                model=self.model,
+                contents=prompt,
+                config=config,
+            )
+            return response.text or ""
+        except Exception as e:
+            raise RuntimeError(f"Gemini text generation failed: {e}") from e
 
     def generate_structured(
         self,
